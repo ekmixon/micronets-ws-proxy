@@ -50,16 +50,16 @@ class WSClient:
             peer_id = "none"
         return f"Client {id (self)} (peer: {peer_id}) @ {self.websocket.remote_address})"
 
-    async def recv_hello_message (self):
+    async def recv_hello_message(self):
         raw_message = await self.websocket.recv ()
         message = json.loads (raw_message)
         if (not message):
-            raise Exception (f"message does not appear to be json")
+            raise Exception("message does not appear to be json")
         hello_message = check_json_field (message, 'message', dict, True)
         message_id = check_json_field (hello_message, 'messageId', int, True)
         message_type = hello_message ['messageType']
         requires_response = check_json_field (hello_message, 'requiresResponse', bool, True)
-        if (not message_type == "CONN:HELLO"):
+        if message_type != "CONN:HELLO":
             raise Exception (f"message does not appear to be a CONN:HELLO message (found {message_type})")
         self.hello_message = message
         return self.hello_message
@@ -67,20 +67,19 @@ class WSClient:
     async def get_hello_message (self):
         return self.hello_message
     
-    async def wait_for_peer (self):
+    async def wait_for_peer(self):
         recv_task = asyncio.get_event_loop ().create_task (self.websocket.recv ())
         logger.info (f"ws_client {id (self)}: wait_for_peer: waiting for peer on {self.meetup_id}...")
         # We need to have a call to recv() in order to know if the socket closes while we're waiting
         done, pending = await asyncio.wait( [self.peer_arrival_future, recv_task, self.ping_timeout_future],
                                             return_when=asyncio.FIRST_COMPLETED)
         if (recv_task.done ()):
-            message = recv_task.result()  # This will throw an exception if the task raised one
-            if (message):
+            if message := recv_task.result():
                 # A message slipped through
                 logger.warning (f"ws_client {id (self)}: wait_for_peer: A message was received while waiting for a peer - DROPPING: {message}")
         else:
             recv_task.cancel ()
-        if (not self.peer_arrival_future in done):
+        if self.peer_arrival_future not in done:
             raise Exception (f"Client {id (self)} failed/recv-ed data before a peer could attach to {self.meetup_id}")
         self.peer_client = self.peer_arrival_future.result ()
         self.peer_arrival_future = None
@@ -102,14 +101,14 @@ class WSClient:
             self.ping_task.cancel ()
             self.ping_task = None
 
-    async def ping_peer (self):
+    async def ping_peer(self):
         while (self.ping_interval_s and self.ping_interval_s > 0):
             ping_send_time = asyncio.get_event_loop ().time ()
             logger.debug (f"ws_client {id (self)}: ping_peer: Sending ping...")
             pong_waiter = await (self.websocket.ping ())
             logger.debug (f"ws_client {id (self)}: ping_peer: Waiting for pong...")
             done, pending = await asyncio.wait ([pong_waiter], timeout=self.ping_timeout_s)
-            if (not pong_waiter in done):
+            if pong_waiter not in done:
                 logger.warning (f"ws_client {id (self)}: ping_peer: ping timeout - DISCONNECTING")
                 pong_waiter.cancel ()
                 close_reason = f"Ping timed out ({self.ping_timeout_s} seconds)"
@@ -173,10 +172,12 @@ class WSClient:
     async def send_message (self, message):
         return await self.websocket.send (message)
 
-    async def peer_disconnected (self, peer):
-        await self.close_websocket (reasonCode=1002, reasonPhrase=f"the peer websocket disconnected")
+    async def peer_disconnected(self, peer):
+        await self.close_websocket(
+            reasonCode=1002, reasonPhrase="the peer websocket disconnected"
+        )
 
-async def ws_connected (websocket, path):
+async def ws_connected(websocket, path):
     try:
         new_client = None
         peer_client = None
@@ -187,7 +188,7 @@ async def ws_connected (websocket, path):
             logger.warning (f"ws_connected: Unsupported path: {proxy_service_prefix} - CLOSING!")
             return
         meetup_id = path [len (proxy_service_prefix):]
-        if (not meetup_id in meetup_table):
+        if meetup_id not in meetup_table:
             client_list = []
             meetup_table [meetup_id] = client_list
         else:
@@ -257,24 +258,18 @@ def check_json_field (json_obj, field, field_type, required):
 def start_websocket_reporting (report_interval_s):
     report_task = asyncio.get_event_loop ().create_task (perform_periodic_connection_reports (report_interval_s))
 
-def perform_connection_report ():
-        report = f"\n---------------------------------------------------------------------------------------\n"
-        report += "WEBSOCKET MEETUP TABLE REPORT FOR {}:{}/{}\n"\
-                  .format (proxy_bind_address, proxy_port, proxy_service_prefix)
-        for meetup_id, meetup_list in meetup_table.items():
-            report += "\n  MEETUP ID: {}\n".format (meetup_id)
-            if len(meetup_list) > 0:
-                client_1 = str (meetup_list[0])
-            else:
-                client_1 = "Not connected"
-            if len(meetup_list) > 1:
-                client_2 = str (meetup_list[1])
-            else:
-                client_2 = "Not connected"
-            report += "    Client 1: {}\n".format (client_1)
-            report += "    Client 2: {}\n".format (client_2)
-        report += f"----------------------------------------------------------------------------------------\n"
-        logger.info (report)
+def perform_connection_report():
+    report = f"\n---------------------------------------------------------------------------------------\n"
+    report += f"WEBSOCKET MEETUP TABLE REPORT FOR {proxy_bind_address}:{proxy_port}/{proxy_service_prefix}\n"
+
+    for meetup_id, meetup_list in meetup_table.items():
+        report += f"\n  MEETUP ID: {meetup_id}\n"
+        client_1 = str (meetup_list[0]) if len(meetup_list) > 0 else "Not connected"
+        client_2 = str (meetup_list[1]) if len(meetup_list) > 1 else "Not connected"
+        report += f"    Client 1: {client_1}\n"
+        report += f"    Client 2: {client_2}\n"
+    report += f"----------------------------------------------------------------------------------------\n"
+    logger.info (report)
 
 async def perform_periodic_connection_reports (report_interval_s):
     logger.info("Performing websocket connection reports every %s seconds", report_interval_s)

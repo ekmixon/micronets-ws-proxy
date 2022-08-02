@@ -17,7 +17,7 @@ async def ws_connected (websocket, path):
     for task in pending:
         task.cancel ()
 
-async def ws_reader (websocket, path):
+async def ws_reader(websocket, path):
     print ("ws-test-server: ws_reader: started")
     global pending_requests
     while True:
@@ -28,11 +28,10 @@ async def ws_reader (websocket, path):
             in_response_to_id = message_json ['inResponseTo']
             print (f"ws-test-server: ws_reader: Message {message_json['messageId']} "
                    f"is a response to {in_response_to_id} - signaling future #{in_response_to_id}")
-            response_future = pending_requests.pop (in_response_to_id)
-            if (not response_future):
-                print (f"ws-test-server: ws_reader: No future found for message {in_response_to_id}!")
-            else:
+            if response_future := pending_requests.pop(in_response_to_id):
                 response_future.set_result (message)
+            else:
+                print (f"ws-test-server: ws_reader: No future found for message {in_response_to_id}!")
         if (message_json ['messageType'] == 'REST:REQUEST'):
             print (f"ws-test-server: ws_reader: Found rest {message_json ['method']} request for {message_json ['path']}")
             await handle_rest_request (websocket, message_json)
@@ -40,7 +39,7 @@ async def ws_reader (websocket, path):
 
 message_id = 1
 
-async def handle_rest_request (websocket, message_json):
+async def handle_rest_request(websocket, message_json):
     global message_id
     print (f"handle_rest_request: {message_json ['method']} for {message_json ['path']}")
     if ('dataFormat' in message_json):
@@ -52,10 +51,10 @@ async def handle_rest_request (websocket, message_json):
                                          'statusCode': 200,
                                          'reasonPhrase': "OK"} } )
     message_id = message_id + 1
-    print (f"handle_rest_request: sending response:", response)
+    print("handle_rest_request: sending response:", response)
     await websocket.send (response)
 
-async def ws_writer (websocket, path):
+async def ws_writer(websocket, path):
     print ("ws-test-server: ws_writer: started")
     global pending_requests
     i = 1
@@ -79,7 +78,7 @@ async def ws_writer (websocket, path):
         response = await message_future
         message = json.loads (response)
         print (f"ws-test-client: Got a response from future #{i}: ", json.dumps (message, indent=2))
-        print (f"ws-test-client: Sleeping...")
+        print("ws-test-client: Sleeping...")
         await asyncio.sleep (30)
         i += 1
 

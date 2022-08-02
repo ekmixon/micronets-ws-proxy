@@ -38,19 +38,16 @@ args = arg_parser.parse_args ()
 websocket = None
 pending_requests = {}
 
-async def init_connection (ssl_context, dest):
-    if (ssl_context):
-        scheme = 'wss'
-    else:
-        scheme = 'ws'
+async def init_connection(ssl_context, dest):
+    scheme = 'wss' if ssl_context else 'ws'
     print (f"ws-test-client: Opening websocket to {dest}...")
     ws = await websockets.connect (dest, ssl=ssl_context)
     print (f"ws-test-client: Connected to {dest}.")
-    print (f"ws-test-client: Sending HELLO message...")
+    print("ws-test-client: Sending HELLO message...")
     await send_hello_message (ws)
-    print (f"ws-test-client: Waiting for HELLO message...")
+    print("ws-test-client: Waiting for HELLO message...")
     await wait_for_hello_message (ws)
-    print (f"ws-test-client: HELLO handshake complete.")
+    print("ws-test-client: HELLO handshake complete.")
     return ws
 
 async def send_hello_message (websocket):
@@ -76,19 +73,19 @@ def check_message (message):
     message_type = check_json_field (message_body, 'messageType', str, True)
     check_json_field (message_body, 'requiresResponse', bool, True)
 
-async def wait_for_hello_message (websocket):
+async def wait_for_hello_message(websocket):
     raw_message = await websocket.recv ()
     message = json.loads (raw_message)
     print (f"ws-test-client: process_hello_messages: Received message: {message}")
     if not message:
-        raise Exception (f"message does not appear to be json")
+        raise Exception("message does not appear to be json")
     check_message (message)
 
     message_type = message['message']['messageType']
     if message_type != "CONN:HELLO":
         raise Exception (f"Unexpected message while waiting for HELLO: {message_type}")
 
-    print (f"ws-test-client: process_hello_messages: Received HELLO message")
+    print("ws-test-client: process_hello_messages: Received HELLO message")
 
 async def receive (websocket):
     print ("ws-test-client: receive: starting...")
@@ -139,7 +136,7 @@ class MyHTTPHandler (BaseHTTPRequestHandler):
     def do_DELETE (self):
         self.relay_message ()
 
-    def relay_message (self):
+    def relay_message(self):
         global message_id
         websocket = get_websocket ()
         print (f"Got {self.command} request for {self.path}")
@@ -156,8 +153,7 @@ class MyHTTPHandler (BaseHTTPRequestHandler):
                     'method': self.command,
                     'path': self.path}
 
-        content_length_val = self.headers ['Content-Length']
-        if (content_length_val):
+        if content_length_val := self.headers['Content-Length']:
             content_length = int (content_length_val)
             del self.headers ['Content-Length']
             if (content_length > 0):
@@ -168,7 +164,7 @@ class MyHTTPHandler (BaseHTTPRequestHandler):
                     data_format = "application/json"
                 if 'Content-Encoding' in self.headers:
                     del self.headers ['Content-Encoding']
-                message_payload = self.rfile.read (int (content_length))
+                message_payload = self.rfile.read(content_length)
                 print (f"  Payload: {message_payload}")
                 message ['dataFormat'] = data_format
                 if (data_format == "application/json"):
@@ -177,17 +173,17 @@ class MyHTTPHandler (BaseHTTPRequestHandler):
                     encoded_payload = message_payload.decode ('utf-8')
                 message ['messageBody'] = encoded_payload
 
-        headers = []
-        for header_name, header_value in self.headers.items ():
-            headers.append ({'name': header_name, 'value': header_value})
-        if (len (headers) > 0):
+        if headers := [
+            {'name': header_name, 'value': header_value}
+            for header_name, header_value in self.headers.items()
+        ]:
             message ['headers'] = headers
         message_json = json.dumps ({'message': message}, indent=2)
 
         print (f"ws-test-client: Relaying REST request to peer: {message_json}")
         request_future = asyncio.run_coroutine_threadsafe (send_rest_message (websocket, message_json), 
                                                            event_loop)
-        print (f"ws-test-client: Waiting for send to complete...")
+        print("ws-test-client: Waiting for send to complete...")
         request_future.result ()
 
         cond = threading.Condition ()
@@ -201,7 +197,7 @@ class MyHTTPHandler (BaseHTTPRequestHandler):
         response_json = json.loads (response)
         response_message = response_json ['message']
         print (f"ws-test-client: response.json for #{request_id}:", json.dumps (response_message))
-        if (not response_message ['messageType'] == "REST:RESPONSE"):
+        if response_message['messageType'] != "REST:RESPONSE":
             raise Exception ("Response to message #{request_id} is not a REST:RESPONSE")
         self.send_response (response_message ['statusCode'])
         found_content_type = False
@@ -221,7 +217,7 @@ class MyHTTPHandler (BaseHTTPRequestHandler):
                 message_body = json.dumps (response_message ['messageBody'], indent=2)
             else:
                 message_body = response_message ['messageBody']
-            print (f"ws-test-client: Found message body:", message_body)
+            print("ws-test-client: Found message body:", message_body)
             if not found_content_type:
                 self.send_header ('Content-Type', data_format)
             self.send_header ('Content-Length', len (message_body))
@@ -319,7 +315,7 @@ try:
     my_http_thread.start ()
     console_thread = ConsoleThread ()
     console_thread.start ()
-    print (f"ws-test-client: Starting event loop...")
+    print("ws-test-client: Starting event loop...")
     event_loop.run_until_complete (receive (websocket))
 except ConnectionClosed or IncompleteReadError as ex:
     print (f"ws-test-client: connection to {args.connect_uri} closed")
